@@ -139,8 +139,10 @@ class HueSetup:
             i.on = False
 
     def switch_group(self, key: int):
-        rooms_state = self.client.bridge.get_room(str(self.rooms[key]))["on"]
-        self.client.bridge.set_room(self.rooms[key], "on", {"on": not rooms_state})
+        rooms_state = self.groups[key].on
+        print(self.groups)
+        self.groups[key].set_state(not rooms_state)
+
 
 
 # init variables on start, get list of apps, source, and grep names of scenes and store them.
@@ -215,7 +217,7 @@ class Remote:
                 case 14:
                     self.hue_client.kill_all()
                 case 15:
-                    self.hue_client.switch_group(0)
+                    self.hue_client.switch_group(4)
                 case 16:
                     self.hue_client.switch_group(1)
                 case 17:
@@ -234,3 +236,5 @@ class Remote:
 
 if __name__ == "__main__":
     remote = Remote()
+    print(remote.hue_client.rooms)
+    remote.main_loop()
