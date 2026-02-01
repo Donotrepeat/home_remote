@@ -11,7 +11,8 @@ from pywebostv.controls import (
 )
 from pywebostv.discovery import discover
 from pywebostv.model import Application, InputSource, AudioOutputSource
-
+import time
+from typing import Optional
 
 from python_hue_v2 import Hue, BridgeFinder, Scene
 
@@ -144,7 +145,6 @@ class HueSetup:
         self.groups[key].set_state(not rooms_state)
 
 
-
 # init variables on start, get list of apps, source, and grep names of scenes and store them.
 # while loop when button is pressed call the function to set the action
 # TODO
@@ -153,35 +153,117 @@ class HueSetup:
 # auto start on starting of  pi
 # monitor battery with action???
 class Remote:
-    def __init__(self) -> None:
-        self.lg_client = self._create_lg_client()
+    def __init__(self, max_retries: int = 3, retry_delay: int = 2) -> None:
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self.lg_client = None
         self.hue_client = HueSetup()
-        self.media = MediaControl(self.lg_client)
-        self.app = ApplicationControl(self.lg_client)
-        self.apps = self.app.list_apps(block=True)
-        self.source = SourceControl(self.lg_client)
-        self.inputs_sources = self.source.list_sources(block=True)
 
-    def _create_lg_client(self) -> WebOSClient:
+        # Try to connect to LG TV
+        self._initialize_lg_connection()
+        if self.lg_client:
+            self._initialize_lg_connection()
+
+    def _create_lg_client(self) -> Optional[WebOSClient]:
+        """Create and connect to LG TV client with error handling"""
         try:
-            with open(KEY_FILE, "r") as f:
-                store = json.load(f)
-            print("Loaded existing pairing key")
-        except FileNotFoundError:
-            store = {}
-            print("No existing pairing key found")
-            # Create a WebOS client
-            with open("webos_key.json", "r") as f:
-                store = json.load(f)
+            # Load pairing key
+            try:
+                with open(KEY_FILE, "r") as f:
+                    store = json.load(f)
+                print("Loaded existing pairing key")
+            except FileNotFoundError:
+                store = {}
+                print("No existing pairing key found")
+                try:
+                    with open("webos_key.json", "r") as f:
+                        store = json.load(f)
+                except FileNotFoundError:
+                    print("Warning: No pairing key file found")
+            # Create and connect client
+            client = WebOSClient(LG_IP, secure=True)
+            client.connect()
+            # Register with TV
+            for status in client.register(store):
+                if status == WebOSClient.PROMPTED:
+                    print("Please accept the pairing request on your TV")
+                elif status == WebOSClient.REGISTERED:
+                    print("Successfully registered!")
+            return client
+        except ConnectionRefusedError:
+            print(f"Connection refused: TV at {LG_IP} is likely off or unreachable")
+            return None
+        except TimeoutError:
+            print(f"Connection timeout: TV at {LG_IP} did not respond")
+            return None
+        except Exception as e:
+            print(f"Error connecting to LG TV: {type(e).__name__}: {e}")
+            return None
 
-        client = WebOSClient(LG_IP, secure=True)
-        client.connect()
-        for status in client.register(store):
-            if status == WebOSClient.PROMPTED:
-                print("Please accept the pairing request on your TV")
-            elif status == WebOSClient.REGISTERED:
-                print("Successfully registered!")
-        return client
+    def _initialize_lg_connection(self) -> None:
+        """Try to establish LG TV connection with retries"""
+        for attempt in range(1, self.max_retries + 1):
+            print(
+                f"Attempting to connect to LG TV (attempt {attempt}/{self.max_retries})..."
+            )
+            self.lg_client = self._create_lg_client()
+
+            if self.lg_client:
+                print("Successfully connected to LG TV")
+                return
+
+            if attempt < self.max_retries:
+                print(f"Retrying in {self.retry_delay} seconds...")
+                time.sleep(self.retry_delay)
+
+        print(
+            "Failed to connect to LG TV after all retries. TV functionality will be unavailable."
+        )
+
+    def ensure_connection(self) -> bool:
+        """Check if TV is connected, attempt reconnection if not"""
+        if self.lg_client is None:
+            print("No LG TV connection. Attempting to reconnect...")
+            self._initialize_lg_connection()
+            if self.lg_client:
+                self._initialize_lg_connection()
+
+        return self.lg_client is not None
+
+    def _initialize_lg_controls(self) -> None:
+        """Initialize LG TV controls (only called if connection succeeded)"""
+        try:
+            self.media = MediaControl(self.lg_client)
+            self.app = ApplicationControl(self.lg_client)
+            self.apps = self.app.list_apps(block=True)
+            self.source = SourceControl(self.lg_client)
+            self.inputs_sources = self.source.list_sources(block=True)
+        except Exception as e:
+            print(f"Error initializing LG controls: {e}")
+            self.media = None
+            self.app = None
+            self.apps = None
+            self.source = None
+            self.inputs_sources = None
+
+    def execute_tv_command(self, command_func, *args, **kwargs):
+        """
+        Wrapper to safely execute TV commands with connection check
+
+        Usage:
+            remote.execute_tv_command(lambda: remote.media.play())
+        """
+        if not self.ensure_connection():
+            print("Cannot execute command: TV is not connected")
+            return None
+
+        try:
+            return command_func(*args, **kwargs)
+        except Exception as e:
+            print(f"Error executing TV command: {e}")
+            # Mark connection as lost
+            self.lg_client = None
+            return None
 
     def main_loop(self):
         run = True
@@ -205,15 +287,15 @@ class Remote:
                 case 8:
                     run = False
                 case 9:
-                    self.media.pause(block=True)
+                    self.execute_tv_command(lambda: self.media.pause(block=True))
                 case 10:
-                    self.media.play(block=True)
+                    self.execute_tv_command(lambda: self.media.play(block=True))
                 case 11:
-                    self.media.rewind(block=True)
+                    self.execute_tv_command(lambda: self.media.rewind(block=True))
                 case 12:
-                    self.media.fast_forward(block=True)
+                    self.execute_tv_command(lambda: self.media.fast_forward(block=True))
                 case 13:
-                    self.media.stop(block=True)
+                    self.execute_tv_command(lambda: self.media.stop(block=True))
                 case 14:
                     self.hue_client.kill_all()
                 case 15:
@@ -235,6 +317,5 @@ class Remote:
 
 
 if __name__ == "__main__":
-    remote = Remote()
-    print(remote.hue_client.rooms)
+    remote = Remote(max_retries=3, retry_delay=2)
     remote.main_loop()
