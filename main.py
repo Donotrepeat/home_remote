@@ -103,6 +103,9 @@ def switch_tv(
     controller: ApplicationControl | SourceControl,
     key: str,
 ):
+    if source is None or controller is None:
+        print("tv is not set")
+        return
     if isinstance(controller, ApplicationControl) and isinstance(
         source[0], Application
     ):
@@ -161,8 +164,15 @@ class Remote:
 
         # Try to connect to LG TV
         self._initialize_lg_connection()
+        print(self.lg_client)
         if self.lg_client:
             self._initialize_lg_connection()
+        else:
+            self.media = None
+            self.app = None
+            self.apps = None
+            self.source = None
+            self.inputs_sources = None
 
     def _create_lg_client(self) -> Optional[WebOSClient]:
         """Create and connect to LG TV client with error handling"""
