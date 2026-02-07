@@ -99,8 +99,8 @@ def get_instance_app(source: list[Application], key: str) -> Application | None:
 
 
 def switch_tv(
-    source: list[InputSource] | list[Application],
-    controller: ApplicationControl | SourceControl,
+    source: list[InputSource] | list[Application] | None,
+    controller: ApplicationControl | SourceControl | None,
     key: str,
 ):
     if source is None or controller is None:
