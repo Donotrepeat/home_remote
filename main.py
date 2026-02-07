@@ -167,12 +167,6 @@ class Remote:
         print(self.lg_client)
         if self.lg_client:
             self._initialize_lg_connection()
-        else:
-            self.media = None
-            self.app = None
-            self.apps = None
-            self.source = None
-            self.inputs_sources = None
 
     def _create_lg_client(self) -> Optional[WebOSClient]:
         """Create and connect to LG TV client with error handling"""
@@ -281,19 +275,41 @@ class Remote:
             input_num = int(input("what to do"))
             match input_num:
                 case 1:
-                    switch_tv(self.apps, self.app, "crunchyroll")
+                    self.execute_tv_command(
+                        lambda: switch_tv(self.apps, self.app, "crunchyroll")
+                    )
                 case 2:
-                    switch_tv(self.apps, self.app, "youtube")
+                    self.execute_tv_command(
+                        lambda: switch_tv(self.apps, self.app, "youtube")
+                    )
                 case 3:
-                    switch_tv(self.apps, self.app, "hbo")
+                    self.execute_tv_command(
+                        lambda: switch_tv(self.apps, self.app, "hbo")
+                    )
                 case 4:
-                    switch_tv(self.apps, self.app, "kpn")
+                    self.execute_tv_command(
+                        lambda: switch_tv(self.apps, self.app, "kpn")
+                    )
                 case 5:
-                    switch_tv(self.inputs_sources, self.source, "nintendo")
+                    self.execute_tv_command(
+                        command_func=lambda: switch_tv,
+                        source=self.inputs_sources,
+                        controller=self.source,
+                        key="nintendo",
+                    )
                 case 6:
-                    switch_tv(self.inputs_sources, self.source, "xbox")
+                    self.execute_tv_command(
+                        lambda: switch_tv,
+                        source=self.inputs_sources,
+                        controller=self.source,
+                        key="xbox",
+                    )
                 case 7:
-                    switch_tv(self.inputs_sources, self.source, "playstation")
+                    self.execute_tv_command(
+                        lambda: switch_tv(
+                            self.inputs_sources, self.source, "playstation"
+                        )
+                    )
                 case 8:
                     run = False
                 case 9:
