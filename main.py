@@ -166,7 +166,7 @@ class Remote:
         self._initialize_lg_connection()
         print(self.lg_client)
         if self.lg_client:
-            self._initialize_lg_connection()
+            self._initialize_lg_controls()
 
     def _create_lg_client(self) -> Optional[WebOSClient]:
         """Create and connect to LG TV client with error handling"""
@@ -292,17 +292,19 @@ class Remote:
                     )
                 case 5:
                     self.execute_tv_command(
-                        command_func=lambda: switch_tv,
-                        source=self.inputs_sources,
-                        controller=self.source,
-                        key="nintendo",
+                        command_func=lambda: switch_tv(
+                            source=self.inputs_sources,
+                            controller=self.source,
+                            key="nintendo",
+                        )
                     )
                 case 6:
                     self.execute_tv_command(
-                        lambda: switch_tv,
-                        source=self.inputs_sources,
-                        controller=self.source,
-                        key="xbox",
+                        lambda: switch_tv(
+                            source=self.inputs_sources,
+                            controller=self.source,
+                            key="xbox",
+                        )
                     )
                 case 7:
                     self.execute_tv_command(
