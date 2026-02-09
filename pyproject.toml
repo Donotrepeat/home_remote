@@ -8,4 +8,5 @@ dependencies = [
     "debugpy>=1.8.19",
     "python-hue-v2>=2.2.1",
     "pywebostv>=0.8.9",
+    "rpi-gpio>=0.7.1",
 ]

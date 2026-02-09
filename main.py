@@ -14,12 +14,38 @@ from pywebostv.model import Application, InputSource, AudioOutputSource
 import time
 from typing import Optional
 
+import RPi.GPIO as GPIO
 from python_hue_v2 import Hue, BridgeFinder, Scene
 
 
 import os
 
-
+BUTTON_PINS = [
+    2,
+    3,
+    4,
+    17,
+    27,
+    22,
+    10,
+    9,
+    11,
+    5,
+    6,
+    13,
+    19,
+    26,
+    14,
+    15,
+    18,
+    23,
+    24,
+    25,
+    8,
+    7,
+    12,
+    16,
+]
 # from gpiozero import Button
 
 KEY_FILE = "webos_key.json"
@@ -168,6 +194,19 @@ class Remote:
         if self.lg_client:
             self._initialize_lg_controls()
 
+        # Setup GPIO
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+
+        # Configure all button pins with pull-up resistors
+        for pin in BUTTON_PINS:
+            GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+        # Track button states for debouncing
+        self.button_states = {pin: True for pin in BUTTON_PINS}
+        self.last_press_time = {pin: 0.0 for pin in BUTTON_PINS}
+        self.debounce_delay = 0.2  # 200ms debounce
+
     def _create_lg_client(self) -> Optional[WebOSClient]:
         """Create and connect to LG TV client with error handling"""
         try:
@@ -269,79 +308,115 @@ class Remote:
             self.lg_client = None
             return None
 
+    def butten_loop(self):
+        """Main loop to monitor button presses"""
+        print("Button Controller started. Monitoring 24 buttons...")
+        print("Press button 8 to exit")
+
+        running = True
+
+        try:
+            while running:
+                current_time = time.time()
+
+                for i, pin in enumerate(BUTTON_PINS, start=1):
+                    current_state = GPIO.input(pin)
+
+                    # Detect falling edge (button press) with debounce
+                    if (
+                        self.button_states[pin]
+                        and not current_state
+                        and current_time - self.last_press_time[pin]
+                        > self.debounce_delay
+                    ):
+                        # Handle the button press
+                        running = self.match_block(i)
+
+                        # Update state and time
+                        self.last_press_time[pin] = current_time
+
+                    # Update button state
+                    self.button_states[pin] = current_state
+
+                time.sleep(0.01)  # 10ms polling interval
+
+        except KeyboardInterrupt:
+            print("\nShutting down via Ctrl+C...")
+        finally:
+            GPIO.cleanup()
+            print("GPIO cleaned up. Goodbye!")
+
     def main_loop(self):
         run = True
         while run:
             input_num = int(input("what to do"))
-            match input_num:
-                case 1:
-                    self.execute_tv_command(
-                        lambda: switch_tv(self.apps, self.app, "crunchyroll")
+            run = self.match_block(input_num)
+
+    def match_block(self, input_num: int) -> bool:
+        match input_num:
+            case 1:
+                self.execute_tv_command(
+                    lambda: switch_tv(self.apps, self.app, "crunchyroll")
+                )
+            case 2:
+                self.execute_tv_command(
+                    lambda: switch_tv(self.apps, self.app, "youtube")
+                )
+            case 3:
+                self.execute_tv_command(lambda: switch_tv(self.apps, self.app, "hbo"))
+            case 4:
+                self.execute_tv_command(lambda: switch_tv(self.apps, self.app, "kpn"))
+            case 5:
+                self.execute_tv_command(
+                    command_func=lambda: switch_tv(
+                        source=self.inputs_sources,
+                        controller=self.source,
+                        key="nintendo",
                     )
-                case 2:
-                    self.execute_tv_command(
-                        lambda: switch_tv(self.apps, self.app, "youtube")
+                )
+            case 6:
+                self.execute_tv_command(
+                    lambda: switch_tv(
+                        source=self.inputs_sources,
+                        controller=self.source,
+                        key="xbox",
                     )
-                case 3:
-                    self.execute_tv_command(
-                        lambda: switch_tv(self.apps, self.app, "hbo")
-                    )
-                case 4:
-                    self.execute_tv_command(
-                        lambda: switch_tv(self.apps, self.app, "kpn")
-                    )
-                case 5:
-                    self.execute_tv_command(
-                        command_func=lambda: switch_tv(
-                            source=self.inputs_sources,
-                            controller=self.source,
-                            key="nintendo",
-                        )
-                    )
-                case 6:
-                    self.execute_tv_command(
-                        lambda: switch_tv(
-                            source=self.inputs_sources,
-                            controller=self.source,
-                            key="xbox",
-                        )
-                    )
-                case 7:
-                    self.execute_tv_command(
-                        lambda: switch_tv(
-                            self.inputs_sources, self.source, "playstation"
-                        )
-                    )
-                case 8:
-                    run = False
-                case 9:
-                    self.execute_tv_command(lambda: self.media.pause(block=True))
-                case 10:
-                    self.execute_tv_command(lambda: self.media.play(block=True))
-                case 11:
-                    self.execute_tv_command(lambda: self.media.rewind(block=True))
-                case 12:
-                    self.execute_tv_command(lambda: self.media.fast_forward(block=True))
-                case 13:
-                    self.execute_tv_command(lambda: self.media.stop(block=True))
-                case 14:
-                    self.hue_client.kill_all()
-                case 15:
-                    self.hue_client.switch_group(4)
-                case 16:
-                    self.hue_client.switch_group(1)
-                case 17:
-                    self.hue_client.switch_group(2)
-                case 18:
-                    self.hue_client.switch_group(3)
-                case 19:
-                    self.hue_client.switch_scene("Lezen")
-                case 20:
-                    self.hue_client.switch_scene("Consentrere")
-                case 21:
-                    self.hue_client.switch_scene("Romantice")
-                case 22:
-                    self.hue_client.switch_scene("Film")
+                )
+            case 7:
+                self.execute_tv_command(
+                    lambda: switch_tv(self.inputs_sources, self.source, "playstation")
+                )
+            case 8:
+                return False
+            case 9:
+                self.execute_tv_command(lambda: self.media.pause(block=True))
+            case 10:
+                self.execute_tv_command(lambda: self.media.play(block=True))
+            case 11:
+                self.execute_tv_command(lambda: self.media.rewind(block=True))
+            case 12:
+                self.execute_tv_command(lambda: self.media.fast_forward(block=True))
+            case 13:
+                self.execute_tv_command(lambda: self.media.stop(block=True))
+            case 14:
+                self.hue_client.kill_all()
+            case 15:
+                self.hue_client.switch_group(4)
+            case 16:
+                self.hue_client.switch_group(1)
+            case 17:
+                self.hue_client.switch_group(2)
+            case 18:
+                self.hue_client.switch_group(3)
+            case 19:
+                self.hue_client.switch_scene("Lezen")
+            case 20:
+                self.hue_client.switch_scene("Consentrere")
+            case 21:
+                self.hue_client.switch_scene("Romantice")
+            case 22:
+                self.hue_client.switch_scene("Film")
+        return True
 
 
 if __name__ == "__main__":
